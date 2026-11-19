@@ -25,7 +25,7 @@
     --c-food: #e8913a; --c-drinks: #3aa0d8; --c-alcohol: #9b4dca; --c-transport: #4a7bd8;
     --c-home: #a07a52; --c-phone: #2bb3a3; --c-health: #e05a7a; --c-clothes: #d1a12e;
     --c-fun: #e86a4a; --c-credit: #6b7785; --c-other: #9aa1a8;
-    --c-kaspi: #f14635; --c-halyk: #1f9a55; --c-none: #9aa1a8;
+    --c-kaspi: #f14635; --c-halyk: #1f9a55; --c-cash: #4f8fa8; --c-none: #9aa1a8;
   }
   * { box-sizing: border-box; }
   body {
@@ -286,7 +286,7 @@
 
   <div class="breakdown">
     <section class="panel"><h2>Расходы по категориям</h2><div id="byCat"></div></section>
-    <section class="panel"><h2>Доходы по банкам</h2><div id="byBank"></div></section>
+    <section class="panel"><h2>Доходы: банки и наличные</h2><div id="byBank"></div></section>
   </div>
 </div>
 
@@ -304,7 +304,7 @@
       </div>
       <div class="picker-label" id="pickLabel">На что потрачено</div>
       <div class="picker" id="pickCat" role="radiogroup" aria-label="Категория расхода"></div>
-      <div class="picker" id="pickBank" role="radiogroup" aria-label="Банк" hidden></div>
+      <div class="picker" id="pickBank" role="radiogroup" aria-label="Куда пришли деньги" hidden></div>
       <input name="title" id="fTitle" placeholder="Комментарий (необязательно)">
       <input name="amount" id="fAmount" type="number" min="0.01" step="0.01" placeholder="Сумма, ₸" required>
       <div class="modal-actions">
@@ -328,7 +328,7 @@
     { id: 'health', name: 'Здоровье' }, { id: 'clothes', name: 'Одежда' }, { id: 'fun', name: 'Развлечения' },
     { id: 'credit', name: 'Кредиты' }, { id: 'other', name: 'Другое' },
   ];
-  const BANKS = [{ id: 'kaspi', name: 'Kaspi' }, { id: 'halyk', name: 'Halyk' }];
+  const BANKS = [{ id: 'kaspi', name: 'Kaspi' }, { id: 'halyk', name: 'Halyk' }, { id: 'cash', name: 'Наличные' }];
   const NO_BANK = { id: 'none', name: 'Без банка' };
   const catOf = o => CATS.find(c => c.id === o.cat) || CATS[CATS.length - 1];
   const bankOf = o => BANKS.find(b => b.id === o.bank) || NO_BANK;
@@ -337,6 +337,7 @@
 
   const fmt = new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const money = (v, sign = true) => {
+    if (Math.abs(v) < 0.005) return `${fmt.format(0)} ₸`;
     const s = fmt.format(Math.abs(v));
     const p = !sign ? (v < 0 ? '−' : '') : (v < 0 ? '−' : '+');
     return `${p}${s} ₸`;
