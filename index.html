@@ -54,7 +54,8 @@
     background: var(--card); cursor: pointer; font: inherit; color: var(--text);
   }
   .settings { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-  .sync { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .sync { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); max-width: 420px; }
+  .sync::before { flex: none; }
   .sync::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
   .sync[data-state="saved"]::before { background: var(--income); }
   .sync[data-state="saving"]::before, .sync[data-state="loading"]::before { background: var(--c-food); }
@@ -363,10 +364,11 @@
     offline: 'Нет связи с хранилищем, изменения пока не сохранены',
     error: 'Не удалось сохранить, попробуйте ещё раз',
     imported: 'Записи из браузера перенесены в облако',
+    noaccess: 'Нет прав на сохранение в облаке, записи хранятся только в этом браузере. Попросите владельца выдать доступ на редактирование',
   };
   function setStatus(s) {
     const el = document.getElementById('sync');
-    el.dataset.state = s === 'imported' ? 'saved' : s;
+    el.dataset.state = s === 'imported' ? 'saved' : s === 'noaccess' ? 'error' : s;
     el.textContent = SYNC_TEXT[s];
   }
   function monthBody(mk) {
@@ -398,7 +400,15 @@
     };
     queues[mk] = (queues[mk] || Promise.resolve()).then(run).then(
       () => { if (--pending === 0) setStatus('saved'); },
-      e => { pending--; setStatus(e && e.code === 'quota_exceeded' ? 'error' : 'error'); });
+      e => {
+        pending--;
+        if (e && e.code === 'invalid_argument' && backend === 'cloud') {
+          // у этого человека нет права записи: работаем локально и честно об этом говорим
+          backend = 'local';
+          try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch (x) {}
+          setStatus('noaccess');
+        } else setStatus('error');
+      });
     return queues[mk];
   }
   function applySnapshot(snap) {
