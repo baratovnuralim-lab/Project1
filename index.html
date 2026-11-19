@@ -221,6 +221,32 @@
   .bar-val small { color: var(--muted); font-weight: 400; }
   .empty-note { color: var(--muted); font-size: 13px; padding: 4px 8px 8px; }
 
+  /* ---------- Recurring ---------- */
+  .panel.wide { grid-column: 1 / -1; }
+  .panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; margin-bottom: 10px; }
+  .panel-head h2 { margin: 0; }
+  .panel-head .total { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .panel-head .total b { color: var(--expense); }
+  .rec-list { display: grid; gap: 2px; }
+  .rec-row {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; align-items: center; gap: 12px;
+    padding: 8px; border-radius: 6px; font-variant-numeric: tabular-nums;
+  }
+  .rec-row:hover { background: var(--other-month); }
+  .rec-row .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rec-row .when { color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .rec-row .amt { font-weight: 700; white-space: nowrap; }
+  .link-btn { border: 0; background: none; padding: 4px 6px; font: inherit; font-size: 13px; color: var(--muted); cursor: pointer; border-radius: 4px; text-decoration: underline; text-underline-offset: 2px; }
+  .link-btn:hover { color: var(--expense); }
+  .link-btn:focus-visible { outline: 2px solid var(--focus); }
+  .rec-badge { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; padding: 0 6px; white-space: nowrap; flex: none; }
+  .repeat { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; padding: 2px 0; }
+  .repeat input { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; }
+  .repeat small { color: var(--muted); }
+  .ops li.ask { flex-wrap: wrap; background: var(--other-month); padding: 8px; border-radius: 6px; gap: 6px 10px; }
+  .ops li.ask .q { flex-basis: 100%; font-size: 13px; color: var(--muted); }
+  .ops li.ask .btn { height: 30px; padding: 0 10px; font-size: 13px; }
+
   @media (max-width: 1000px) {
     .breakdown { grid-template-columns: minmax(0, 1fr); }
     .alc-mark { font-size: 0; width: 8px; height: 8px; padding: 0; margin-top: 5px; background: var(--c-alcohol); }
@@ -232,6 +258,11 @@
     .grid { column-gap: 4px; }
   }
   @media (max-width: 720px) {
+    .rec-row { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+    .rec-row .name { order: 2; flex: 1 1 25%; }
+    .rec-row .amt { order: 3; }
+    .rec-row .when { order: 4; flex: 1 1 auto; }
+    .rec-row .link-btn { order: 5; padding: 4px 0; text-align: right; }
     .bar-row { grid-template-columns: 100px minmax(0, 1fr) auto; gap: 8px; }
     .bar-val small { display: none; }
     .calendar { padding: 4px 6px 10px; }
@@ -287,6 +318,10 @@
   <div class="breakdown">
     <section class="panel"><h2>Расходы по категориям</h2><div id="byCat"></div></section>
     <section class="panel"><h2>Доходы: банки и наличные</h2><div id="byBank"></div></section>
+    <section class="panel wide">
+      <div class="panel-head"><h2>Ежемесячные платежи</h2><span class="total" id="recTotal"></span></div>
+      <div id="recList" class="rec-list"></div>
+    </section>
   </div>
 </div>
 
@@ -307,6 +342,7 @@
       <div class="picker" id="pickBank" role="radiogroup" aria-label="Куда пришли деньги" hidden></div>
       <input name="title" id="fTitle" placeholder="Комментарий (необязательно)">
       <input name="amount" id="fAmount" type="number" min="0.01" step="0.01" placeholder="Сумма, ₸" required>
+      <label class="repeat"><input type="checkbox" id="fRepeat"><span>Повторять каждый месяц <small id="repeatHint"></small></span></label>
       <div class="modal-actions">
         <button type="button" class="btn" id="resetDay">Очистить день</button>
         <button type="button" class="btn right" id="closeModal">Закрыть</button>
@@ -351,9 +387,10 @@
   const key = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
   // ---------- Storage (per-viewer convenience) ----------
-  let store = { days: {}, opening: {} };
+  let store = { days: {}, opening: {}, recurring: [] };
   try { const raw = localStorage.getItem(STORE_KEY); if (raw) store = Object.assign(store, JSON.parse(raw)); } catch (e) {}
-  const hadLocal = Object.keys(store.days).some(k => (store.days[k] || []).length) || Object.keys(store.opening).length > 0;
+  if (!Array.isArray(store.recurring)) store.recurring = [];
+  const hadLocal = Object.keys(store.days).some(k => (store.days[k] || []).length) || Object.keys(store.opening).length > 0 || store.recurring.length > 0;
 
   // ---------- Cloud storage (artifact db, private per person) ----------
   let backend = 'local', db = null, uid = null;
@@ -383,23 +420,25 @@
   }
   const queues = {};
   let pending = 0;
-  function save(mk) {
+  const save = mk => saveDoc('m-' + mk, () => monthBody(mk), b => !Object.keys(b.days).length && !('opening' in b));
+  const saveRec = () => saveDoc('recurring', () => ({ rules: store.recurring }), b => !b.rules.length);
+  function saveDoc(docId, bodyFn, isEmpty) {
     if (backend !== 'cloud') {
       try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch (e) {}
       return Promise.resolve();
     }
-    const ref = db.collection('data/users/' + uid).doc('m-' + mk);
+    const ref = db.collection('data/users/' + uid).doc(docId);
     pending++; setStatus('saving');
     const run = () => {
-      const body = monthBody(mk);
-      const empty = !Object.keys(body.days).length && !('opening' in body);
+      const body = bodyFn();
+      const empty = isEmpty(body);
       const write = () => empty ? ref.delete() : ref.set(JSON.parse(JSON.stringify(body)));
       return write().catch(e => {
         if (e && e.code === 'unavailable') return new Promise(res => setTimeout(res, 800 + Math.random() * 800)).then(write);
         throw e;
       });
     };
-    queues[mk] = (queues[mk] || Promise.resolve()).then(run).then(
+    queues[docId] = (queues[docId] || Promise.resolve()).then(run).then(
       () => { if (--pending === 0) setStatus('saved'); },
       e => {
         pending--;
@@ -410,11 +449,13 @@
           setStatus('noaccess');
         } else setStatus('error');
       });
-    return queues[mk];
+    return queues[docId];
   }
   function applySnapshot(snap) {
     const days = {}, opening = {};
+    let recurring = [];
     snap.docs.forEach(d => {
+      if (d.id === 'recurring') { const rs = (d.data() || {}).rules; if (Array.isArray(rs)) recurring = rs.map(x => ({ ...x, skip: [...(x.skip || [])] })); return; }
       if (!d.id.startsWith('m-')) return;
       const mk = d.id.slice(2), b = d.data() || {};
       Object.entries(b.days || {}).forEach(([dd, ops]) => {
@@ -422,7 +463,7 @@
       });
       if (typeof b.opening === 'number') opening[mk] = b.opening;
     });
-    store = { days, opening };
+    store = { days, opening, recurring };
     render();
     if (openDay) renderModal();
   }
@@ -442,7 +483,7 @@
         if (snap.empty && hadLocal) {
           // первый вход: переносим то, что уже было записано в этом браузере
           const months = new Set(Object.keys(store.days).map(k => k.slice(0, 7)).concat(Object.keys(store.opening)));
-          Promise.all([...months].map(save)).then(() => setStatus('imported'));
+          Promise.all([...months].map(save).concat(store.recurring.length ? [saveRec()] : [])).then(() => setStatus('imported'));
           return;
         }
         setStatus('saved');
@@ -451,15 +492,20 @@
     }, () => { clearTimeout(timer); if (backend !== 'cloud') setStatus('local'); else setStatus('error'); });
   }
 
+  // ежемесячное правило: { id, type, cat|bank, title, amount, day, start: 'YYYY-MM', end?: 'YYYY-MM' (не включая), skip: ['YYYY-MM'] }
+  const ruleActive = (rule, mk) => rule.start <= mk && (!rule.end || mk < rule.end) && !(rule.skip || []).includes(mk);
+  const ruleDay = (rule, y, m) => Math.min(rule.day, new Date(y, m + 1, 0).getDate());
+  const ruleOp = rule => ({ type: rule.type, title: rule.title, amount: rule.amount, cat: rule.cat, bank: rule.bank, rid: rule.id });
   const opsFor = (y, m, d) => {
-    const k = key(y, m, d);
-    return store.days[k] || [];
+    const k = key(y, m, d), mk = k.slice(0, 7);
+    const rec = store.recurring.filter(rule => ruleActive(rule, mk) && ruleDay(rule, y, m) === d).map(ruleOp);
+    return rec.concat(store.days[k] || []);
   };
   const openingFor = (y, m) => {
     const k = key(y, m, 1).slice(0, 7);
     if (k in store.opening) return store.opening[k];
     // иначе переносим остаток с конца предыдущего месяца
-    const keys = Object.keys(store.days).concat(Object.keys(store.opening)).map(x => x.slice(0, 7)).sort();
+    const keys = Object.keys(store.days).concat(Object.keys(store.opening), store.recurring.map(x => x.start)).map(x => x.slice(0, 7)).sort();
     if (!keys.length || k <= keys[0]) return 0;
     const prev = new Date(y, m - 1, 1);
     return compute(prev.getFullYear(), prev.getMonth()).end;
@@ -492,8 +538,9 @@
       minBal = Math.min(minBal, bal);
       list.push({ d, ops, inc, out, alc, net: inc - out, start, end: bal, gap: bal < 0 && inc - out < 0 && start >= 0 });
     }
-    // если разрыв продолжается и углубляется — подсвечиваем дни, где он растёт
-    list.forEach((x, i) => { if (!x.gap && x.end < 0 && x.end < (list[i - 1]?.end ?? 0) && (list[i - 1]?.end ?? 0) >= 0) x.gap = true; });
+    // месяц начался уже в минусе: первый день с расходом тоже показываем как разрыв
+    const firstOut = list.find(x => x.net < 0);
+    if (list.length && list[0].start < 0 && firstOut && !list.some(x => x.gap)) firstOut.gap = true;
     return { y, m, days, list, tin, tout, end: bal, minBal, byCat, byBank };
   }
 
@@ -580,14 +627,48 @@
     document.getElementById('byBank').innerHTML =
       (tin ? '' : '<div class="empty-note">Доходов в этом месяце пока нет.</div>') +
       banks.map(b => barRow(b, byBank[b.id] || 0, maxB, tin)).join('');
+    renderRecurring();
   }
+
+  function renderRecurring() {
+    const { y, m } = view;
+    const mk = key(y, m, 1).slice(0, 7);
+    const rules = store.recurring.filter(rule => ruleActive(rule, mk)).sort((a, b) => a.day - b.day);
+    const outSum = rules.filter(x => x.type === 'out').reduce((s, x) => s + x.amount, 0);
+    const inSum = rules.filter(x => x.type === 'in').reduce((s, x) => s + x.amount, 0);
+    document.getElementById('recTotal').innerHTML = rules.length
+      ? `Расходы в месяц: <b>${money(-outSum)}</b>` + (inSum ? ` · доходы: ${money(inSum)}` : '')
+      : '';
+    document.getElementById('recList').innerHTML = rules.length ? rules.map(rule => {
+      const t = rule.type === 'in' ? bankOf(rule) : catOf(rule);
+      return `<div class="rec-row">
+        <span class="tag" style="--tag:var(--c-${t.id})">${t.name}</span>
+        <span class="name">${esc(rule.title || t.name)}</span>
+        <span class="when">${ruleDay(rule, y, m)}-го числа</span>
+        <span class="amt" style="color:var(--${rule.type === 'in' ? 'income' : 'expense'})">${money(rule.type === 'in' ? rule.amount : -rule.amount)}</span>
+        <button type="button" class="link-btn" data-stop="${rule.id}">Отменить со следующего месяца</button>
+      </div>`;
+    }).join('') : '<div class="empty-note">Ежемесячных платежей пока нет. Добавьте расход или доход в любой день и отметьте «Повторять каждый месяц», например для подписки или аренды.</div>';
+  }
+  const nextMonth = mk => { const [yy, mm] = mk.split('-').map(Number); const d = new Date(yy, mm, 1); return key(d.getFullYear(), d.getMonth(), 1).slice(0, 7); };
+  function stopRule(id, fromMk) {
+    const rule = store.recurring.find(x => x.id === id); if (!rule) return;
+    if (fromMk <= rule.start) store.recurring = store.recurring.filter(x => x !== rule);
+    else rule.end = fromMk;
+    saveRec(); render(); if (openDay) renderModal();
+  }
+  document.getElementById('recList').addEventListener('click', e => {
+    const b = e.target.closest('[data-stop]'); if (!b) return;
+    stopRule(b.dataset.stop, nextMonth(key(view.y, view.m, 1).slice(0, 7)));
+  });
 
   // ---------- Modal ----------
   const backdrop = document.getElementById('backdrop');
   let openDay = null;
 
   function openModal(d) {
-    openDay = d;
+    openDay = d; askRid = null;
+    document.getElementById('fRepeat').checked = false;
     renderModal();
     backdrop.classList.add('open');
     renderPickers();
@@ -601,11 +682,23 @@
     const plan = date > today ? 'Плановые операции' : 'Фактические операции';
     document.getElementById('mSub').textContent = x.gap ? `${plan} · кассовый разрыв ${money(x.end, false)}` : plan;
     const ul = document.getElementById('mOps');
-    ul.innerHTML = x.ops.length ? x.ops.map((o, i) => `
-      <li>${(t => `<span class="tag" style="--tag:var(--c-${t.id})">${t.name}</span>`)(o.type === 'in' ? bankOf(o) : catOf(o))}<span class="name">${esc(o.title || '')}</span>
+    let own = 0;
+    ul.innerHTML = x.ops.length ? x.ops.map(o => {
+      const t = o.type === 'in' ? bankOf(o) : catOf(o);
+      const delAttr = o.rid ? `data-rid="${o.rid}"` : `data-i="${own++}"`;
+      const row = `<li>
+        <span class="tag" style="--tag:var(--c-${t.id})">${t.name}</span>${o.rid ? '<span class="rec-badge">ежемесячно</span>' : ''}
+        <span class="name">${esc(o.title || '')}</span>
         <span class="amt" style="color:var(--${o.type === 'in' ? 'income' : 'expense'})">${money(o.type === 'in' ? o.amount : -o.amount)}</span>
-        <button class="del" data-i="${i}" aria-label="Удалить">×</button></li>`).join('')
-      : '<li class="empty">Операций нет</li>';
+        <button class="del" ${delAttr} aria-label="Удалить">×</button></li>`;
+      const ask = o.rid && askRid === o.rid ? `<li class="ask"><span class="q">Это ежемесячный платёж. Что сделать?</span>
+        <button type="button" class="btn" data-skip="${o.rid}">Убрать только в этом месяце</button>
+        <button type="button" class="btn" data-stopnow="${o.rid}">Отменить с этого месяца</button>
+        <button type="button" class="btn" data-cancel="1">Оставить</button></li>` : '';
+      return row + ask;
+    }).join('') : '<li class="empty">Операций нет</li>';
+    document.getElementById('repeatHint').textContent = openDay > 28
+      ? `(${openDay}-го числа, в коротких месяцах — в последний день)` : `(${openDay}-го числа)`;
     document.getElementById('mStart').textContent = money(x.start, false);
     const e = document.getElementById('mEnd');
     e.textContent = money(x.end, false);
@@ -613,12 +706,24 @@
   }
   const closeModal = () => { backdrop.classList.remove('open'); openDay = null; };
   const dayKey = () => key(view.y, view.m, openDay);
-  const editableOps = () => store.days[dayKey()] || (store.days[dayKey()] = opsFor(view.y, view.m, openDay).map(o => ({ ...o })));
+  const editableOps = () => store.days[dayKey()] || (store.days[dayKey()] = []);
+  let askRid = null;
 
   document.getElementById('mOps').addEventListener('click', e => {
-    const b = e.target.closest('.del'); if (!b) return;
-    editableOps().splice(+b.dataset.i, 1);
-    save(dayKey().slice(0, 7)); render(); renderModal();
+    const mk = dayKey().slice(0, 7);
+    const t = e.target.closest('button'); if (!t) return;
+    if (t.dataset.rid) { askRid = t.dataset.rid; renderModal(); return; }
+    if (t.dataset.cancel) { askRid = null; renderModal(); return; }
+    if (t.dataset.skip) {
+      const rule = store.recurring.find(x => x.id === t.dataset.skip);
+      if (rule) { rule.skip = (rule.skip || []).concat(mk); saveRec(); }
+      askRid = null; render(); renderModal(); return;
+    }
+    if (t.dataset.stopnow) { askRid = null; stopRule(t.dataset.stopnow, mk); return; }
+    if (t.dataset.i !== undefined) {
+      editableOps().splice(+t.dataset.i, 1);
+      save(mk); render(); renderModal();
+    }
   });
   document.getElementById('addForm').addEventListener('submit', e => {
     e.preventDefault();
@@ -628,8 +733,19 @@
     const type = f.get('type');
     const op = { type, title: String(f.get('title') || '').trim(), amount };
     if (type === 'out') op.cat = selCat; else op.bank = selBank;
-    editableOps().push(op);
-    save(dayKey().slice(0, 7)); render(); renderModal();
+    const mk = dayKey().slice(0, 7);
+    if (document.getElementById('fRepeat').checked) {
+      const id = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      const rule = { id, type, title: op.title, amount, day: openDay, start: mk, skip: [] };
+      if (type === 'out') rule.cat = selCat; else rule.bank = selBank;
+      store.recurring.push(rule);
+      saveRec();
+      document.getElementById('fRepeat').checked = false;
+    } else {
+      editableOps().push(op);
+      save(mk);
+    }
+    render(); renderModal();
     e.target.title.value = ''; e.target.amount.value = ''; e.target.amount.focus();
   });
 
@@ -652,7 +768,11 @@
     const b = e.target.closest('.chip'); if (!b) return; selBank = b.dataset.id; renderPickers(); document.getElementById('fAmount').focus();
   });
   document.getElementById('resetDay').addEventListener('click', () => {
-    delete store.days[dayKey()]; save(dayKey().slice(0, 7)); render(); renderModal();
+    const mk = dayKey().slice(0, 7);
+    const recHere = opsFor(view.y, view.m, openDay).filter(o => o.rid);
+    recHere.forEach(o => { const rule = store.recurring.find(x => x.id === o.rid); if (rule) rule.skip = (rule.skip || []).concat(mk); });
+    if (recHere.length) saveRec();
+    delete store.days[dayKey()]; save(mk); askRid = null; render(); renderModal();
   });
   document.getElementById('closeModal').addEventListener('click', closeModal);
   backdrop.addEventListener('click', e => { if (e.target === backdrop) closeModal(); });
