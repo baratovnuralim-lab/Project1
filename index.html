@@ -54,6 +54,13 @@
     background: var(--card); cursor: pointer; font: inherit; color: var(--text);
   }
   .settings { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .sync { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .sync::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .sync[data-state="saved"]::before { background: var(--income); }
+  .sync[data-state="saving"]::before, .sync[data-state="loading"]::before { background: var(--c-food); }
+  .sync[data-state="local"]::before, .sync[data-state="offline"]::before { background: var(--c-clothes); }
+  .sync[data-state="error"] { color: var(--expense); }
+  .sync[data-state="error"]::before { background: var(--expense); }
   .settings label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
   .settings input {
     width: 130px; height: 34px; padding: 0 10px; border: 1px solid var(--line);
@@ -252,6 +259,7 @@
     </div>
     <div class="settings">
       <label>Остаток на начало месяца <input id="opening" type="number" step="1000"></label>
+      <span class="sync" id="sync" data-state="local" role="status" aria-live="polite"></span>
     </div>
   </div>
 
@@ -343,7 +351,94 @@
   // ---------- Storage (per-viewer convenience) ----------
   let store = { days: {}, opening: {} };
   try { const raw = localStorage.getItem(STORE_KEY); if (raw) store = Object.assign(store, JSON.parse(raw)); } catch (e) {}
-  const save = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch (e) {} };
+  const hadLocal = Object.keys(store.days).some(k => (store.days[k] || []).length) || Object.keys(store.opening).length > 0;
+
+  // ---------- Cloud storage (artifact db, private per person) ----------
+  let backend = 'local', db = null, uid = null;
+  const SYNC_TEXT = {
+    local: 'Сохраняется только в этом браузере',
+    loading: 'Загрузка данных…',
+    saving: 'Сохранение…',
+    saved: 'Сохранено в облаке',
+    offline: 'Нет связи с хранилищем, изменения пока не сохранены',
+    error: 'Не удалось сохранить, попробуйте ещё раз',
+    imported: 'Записи из браузера перенесены в облако',
+  };
+  function setStatus(s) {
+    const el = document.getElementById('sync');
+    el.dataset.state = s === 'imported' ? 'saved' : s;
+    el.textContent = SYNC_TEXT[s];
+  }
+  function monthBody(mk) {
+    const days = {};
+    Object.keys(store.days).forEach(k => {
+      if (k.startsWith(mk + '-') && store.days[k] && store.days[k].length) days[k.slice(8)] = store.days[k];
+    });
+    const body = { days };
+    if (mk in store.opening) body.opening = store.opening[mk];
+    return body;
+  }
+  const queues = {};
+  let pending = 0;
+  function save(mk) {
+    if (backend !== 'cloud') {
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch (e) {}
+      return Promise.resolve();
+    }
+    const ref = db.collection('data/users/' + uid).doc('m-' + mk);
+    pending++; setStatus('saving');
+    const run = () => {
+      const body = monthBody(mk);
+      const empty = !Object.keys(body.days).length && !('opening' in body);
+      const write = () => empty ? ref.delete() : ref.set(JSON.parse(JSON.stringify(body)));
+      return write().catch(e => {
+        if (e && e.code === 'unavailable') return new Promise(res => setTimeout(res, 800 + Math.random() * 800)).then(write);
+        throw e;
+      });
+    };
+    queues[mk] = (queues[mk] || Promise.resolve()).then(run).then(
+      () => { if (--pending === 0) setStatus('saved'); },
+      e => { pending--; setStatus(e && e.code === 'quota_exceeded' ? 'error' : 'error'); });
+    return queues[mk];
+  }
+  function applySnapshot(snap) {
+    const days = {}, opening = {};
+    snap.docs.forEach(d => {
+      if (!d.id.startsWith('m-')) return;
+      const mk = d.id.slice(2), b = d.data() || {};
+      Object.entries(b.days || {}).forEach(([dd, ops]) => {
+        if (Array.isArray(ops)) days[mk + '-' + dd] = ops.map(o => ({ ...o }));
+      });
+      if (typeof b.opening === 'number') opening[mk] = b.opening;
+    });
+    store = { days, opening };
+    render();
+    if (openDay) renderModal();
+  }
+  async function connectCloud() {
+    if (!window.claude || typeof window.claude.use !== 'function') { setStatus('local'); return; }
+    setStatus('loading');
+    const [d, u] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
+    const id = u ? await u.id() : null;
+    if (!d || !id) { setStatus('local'); return; }
+    db = d; uid = id;
+    const timer = setTimeout(() => { if (backend !== 'cloud') setStatus('offline'); }, 10000);
+    db.collection('data/users/' + uid).onSnapshot(snap => {
+      if (backend !== 'cloud') {
+        if (snap.metadata.fromCache) return; // ждём подтверждённых данных
+        clearTimeout(timer);
+        backend = 'cloud';
+        if (snap.empty && hadLocal) {
+          // первый вход: переносим то, что уже было записано в этом браузере
+          const months = new Set(Object.keys(store.days).map(k => k.slice(0, 7)).concat(Object.keys(store.opening)));
+          Promise.all([...months].map(save)).then(() => setStatus('imported'));
+          return;
+        }
+        setStatus('saved');
+      }
+      applySnapshot(snap);
+    }, () => { clearTimeout(timer); if (backend !== 'cloud') setStatus('local'); else setStatus('error'); });
+  }
 
   const opsFor = (y, m, d) => {
     const k = key(y, m, d);
@@ -512,7 +607,7 @@
   document.getElementById('mOps').addEventListener('click', e => {
     const b = e.target.closest('.del'); if (!b) return;
     editableOps().splice(+b.dataset.i, 1);
-    save(); render(); renderModal();
+    save(dayKey().slice(0, 7)); render(); renderModal();
   });
   document.getElementById('addForm').addEventListener('submit', e => {
     e.preventDefault();
@@ -523,7 +618,7 @@
     const op = { type, title: String(f.get('title') || '').trim(), amount };
     if (type === 'out') op.cat = selCat; else op.bank = selBank;
     editableOps().push(op);
-    save(); render(); renderModal();
+    save(dayKey().slice(0, 7)); render(); renderModal();
     e.target.title.value = ''; e.target.amount.value = ''; e.target.amount.focus();
   });
 
@@ -546,7 +641,7 @@
     const b = e.target.closest('.chip'); if (!b) return; selBank = b.dataset.id; renderPickers(); document.getElementById('fAmount').focus();
   });
   document.getElementById('resetDay').addEventListener('click', () => {
-    delete store.days[dayKey()]; save(); render(); renderModal();
+    delete store.days[dayKey()]; save(dayKey().slice(0, 7)); render(); renderModal();
   });
   document.getElementById('closeModal').addEventListener('click', closeModal);
   backdrop.addEventListener('click', e => { if (e.target === backdrop) closeModal(); });
@@ -564,11 +659,14 @@
   document.getElementById('todayBtn').addEventListener('click', () => { view = { y: today.getFullYear(), m: today.getMonth() }; render(); });
   document.getElementById('opening').addEventListener('change', e => {
     const v = parseFloat(e.target.value);
-    store.opening[key(view.y, view.m, 1).slice(0, 7)] = isFinite(v) ? v : 0;
-    save(); render();
+    const mk = key(view.y, view.m, 1).slice(0, 7);
+    if (e.target.value.trim() === '') delete store.opening[mk];
+    else store.opening[mk] = isFinite(v) ? v : 0;
+    save(mk); render();
   });
 
   render();
+  connectCloud();
 })();
 </script>
 </body>
