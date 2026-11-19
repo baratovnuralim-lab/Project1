@@ -22,6 +22,10 @@
     --gap-border: #e0473e;
     --other-month: #f7f7f8;
     --accent: #2b2f33;
+    --c-food: #e8913a; --c-drinks: #3aa0d8; --c-alcohol: #9b4dca; --c-transport: #4a7bd8;
+    --c-home: #a07a52; --c-phone: #2bb3a3; --c-health: #e05a7a; --c-clothes: #d1a12e;
+    --c-fun: #e86a4a; --c-credit: #6b7785; --c-other: #9aa1a8;
+    --c-kaspi: #f14635; --c-halyk: #1f9a55; --c-none: #9aa1a8;
   }
   * { box-sizing: border-box; }
   body {
@@ -58,13 +62,16 @@
 
   /* ---------- Summary ---------- */
   .summary {
-    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px;
+    display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px;
   }
   .stat { background: var(--card); border-radius: 10px; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
   .stat .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
   .stat .v { font-size: 18px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
   .v.income { color: var(--income); }
   .v.expense { color: var(--expense); }
+  .v.alcohol { color: var(--c-alcohol); }
+  .stat .note { font-size: 12px; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .stat.alc { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-alcohol) 45%, transparent); }
 
   /* ---------- Calendar ---------- */
   .calendar {
@@ -163,7 +170,52 @@
   .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   .btn.right { margin-left: auto; }
 
+  .day .head { gap: 6px; }
+  .alc-mark {
+    font-size: 11px; font-weight: 700; line-height: 18px; padding: 0 7px; border-radius: 9px;
+    color: var(--c-alcohol); background: color-mix(in srgb, var(--c-alcohol) 14%, transparent);
+    white-space: nowrap;
+  }
+
+  /* ---------- Chips & tags ---------- */
+  .picker { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+  .picker[hidden] { display: none; }
+  .picker-label { grid-column: 1 / -1; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin-top: 4px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
+    border: 1px solid var(--line); border-radius: 15px; background: var(--card); color: var(--text);
+    font: inherit; font-size: 13px; cursor: pointer;
+  }
+  .chip::before, .tag::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--tag); flex: none; }
+  .chip:hover { border-color: var(--tag); }
+  .chip:focus-visible { outline: 2px solid var(--tag); outline-offset: 1px; }
+  .chip[aria-checked="true"] { border-color: var(--tag); background: color-mix(in srgb, var(--tag) 16%, transparent); font-weight: 700; }
+  .chip.bank { height: 36px; padding: 0 18px; font-size: 14px; }
+  .tag {
+    display: inline-flex; align-items: center; gap: 6px; flex: none; font-size: 12px; padding: 1px 8px; border-radius: 10px;
+    background: color-mix(in srgb, var(--tag) 14%, transparent); color: var(--text);
+  }
+
+  /* ---------- Breakdown ---------- */
+  .breakdown { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; margin-top: 16px; align-items: start; }
+  .panel { background: var(--card); border-radius: 10px; padding: 16px 16px 10px; box-shadow: 0 1px 3px var(--shadow); min-width: 0; }
+  .panel h2 { font-size: 15px; margin: 0 0 10px; }
+  .bar-row {
+    display: grid; grid-template-columns: 150px minmax(0, 1fr) 150px; align-items: center; gap: 12px;
+    padding: 6px 8px; border-radius: 6px; font-variant-numeric: tabular-nums;
+  }
+  .bar-row.alc { background: color-mix(in srgb, var(--c-alcohol) 10%, transparent); font-weight: 700; }
+  .bar-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .bar-name::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--tag); flex: none; }
+  .bar-track { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--tag); border-radius: 4px; }
+  .bar-val { text-align: right; white-space: nowrap; }
+  .bar-val small { color: var(--muted); font-weight: 400; }
+  .empty-note { color: var(--muted); font-size: 13px; padding: 4px 8px 8px; }
+
   @media (max-width: 1000px) {
+    .breakdown { grid-template-columns: minmax(0, 1fr); }
+    .alc-mark { font-size: 0; width: 8px; height: 8px; padding: 0; margin-top: 5px; background: var(--c-alcohol); }
     .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .day { height: 120px; font-size: 12px; }
     .day .line { padding: 0 6px; height: 26px; }
@@ -172,6 +224,8 @@
     .grid { column-gap: 4px; }
   }
   @media (max-width: 720px) {
+    .bar-row { grid-template-columns: 100px minmax(0, 1fr) auto; gap: 8px; }
+    .bar-val small { display: none; }
     .calendar { padding: 4px 6px 10px; }
     .dow { font-size: 10px; text-align: center; padding: 10px 0; }
     .dow .full { display: none; }
@@ -202,11 +256,12 @@
   </div>
 
   <div class="summary">
-    <div class="stat"><div class="k">Поступления</div><div class="v income" id="sIn"></div></div>
-    <div class="stat"><div class="k">Выплаты</div><div class="v expense" id="sOut"></div></div>
+    <div class="stat"><div class="k">Доходы</div><div class="v income" id="sIn"></div></div>
+    <div class="stat"><div class="k">Расходы</div><div class="v expense" id="sOut"></div></div>
     <div class="stat"><div class="k">Итог месяца</div><div class="v" id="sNet"></div></div>
     <div class="stat"><div class="k">Остаток на конец</div><div class="v" id="sEnd"></div></div>
     <div class="stat"><div class="k">Кассовые разрывы</div><div class="v" id="sGap"></div></div>
+    <div class="stat alc"><div class="k">Алкоголь</div><div class="v alcohol" id="sAlc"></div><div class="note" id="sAlcNote"></div></div>
   </div>
 
   <div class="calendar">
@@ -216,7 +271,13 @@
       <span><i class="sw" style="background:var(--neg)"></i>Отрицательный итог дня</span>
       <span><i class="sw" style="background:rgba(154,235,227,.5)"></i>Плановые операции</span>
       <span><i class="sw" style="background:var(--gap-bg);border:1px dashed var(--gap-border)"></i>Кассовый разрыв</span>
+      <span><i class="alc-mark">алкоголь</i>Были траты на алкоголь</span>
     </div>
+  </div>
+
+  <div class="breakdown">
+    <section class="panel"><h2>Расходы по категориям</h2><div id="byCat"></div></section>
+    <section class="panel"><h2>Доходы по банкам</h2><div id="byBank"></div></section>
   </div>
 </div>
 
@@ -229,11 +290,14 @@
     <div class="balance-row"><span>Остаток на конец дня</span><b id="mEnd"></b></div>
     <form class="add" id="addForm">
       <div class="type">
-        <label><input type="radio" name="type" value="in" checked><span>Поступление</span></label>
-        <label><input type="radio" name="type" value="out"><span>Выплата</span></label>
+        <label><input type="radio" name="type" value="out" checked><span>Расход</span></label>
+        <label><input type="radio" name="type" value="in"><span>Доход</span></label>
       </div>
-      <input name="title" placeholder="Назначение (например, Оплата от клиента)" required>
-      <input name="amount" type="number" min="0.01" step="0.01" placeholder="Сумма, ₽" required>
+      <div class="picker-label" id="pickLabel">На что потрачено</div>
+      <div class="picker" id="pickCat" role="radiogroup" aria-label="Категория расхода"></div>
+      <div class="picker" id="pickBank" role="radiogroup" aria-label="Банк" hidden></div>
+      <input name="title" id="fTitle" placeholder="Комментарий (необязательно)">
+      <input name="amount" id="fAmount" type="number" min="0.01" step="0.01" placeholder="Сумма, ₸" required>
       <div class="modal-actions">
         <button type="button" class="btn" id="resetDay">Очистить день</button>
         <button type="button" class="btn right" id="closeModal">Закрыть</button>
@@ -249,13 +313,24 @@
   const MONTHS_GEN = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
   const DOW = ['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'];
   const DOW_SHORT = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+  const CATS = [
+    { id: 'food', name: 'Еда' }, { id: 'drinks', name: 'Напитки' }, { id: 'alcohol', name: 'Алкоголь' },
+    { id: 'transport', name: 'Транспорт' }, { id: 'home', name: 'Жильё и коммуналка' }, { id: 'phone', name: 'Связь и интернет' },
+    { id: 'health', name: 'Здоровье' }, { id: 'clothes', name: 'Одежда' }, { id: 'fun', name: 'Развлечения' },
+    { id: 'credit', name: 'Кредиты' }, { id: 'other', name: 'Другое' },
+  ];
+  const BANKS = [{ id: 'kaspi', name: 'Kaspi' }, { id: 'halyk', name: 'Halyk' }];
+  const NO_BANK = { id: 'none', name: 'Без банка' };
+  const catOf = o => CATS.find(c => c.id === o.cat) || CATS[CATS.length - 1];
+  const bankOf = o => BANKS.find(b => b.id === o.bank) || NO_BANK;
+  const esc = s => String(s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]);
   const STORE_KEY = 'fincal:v2';
 
   const fmt = new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const money = (v, sign = true) => {
     const s = fmt.format(Math.abs(v));
     const p = !sign ? (v < 0 ? '−' : '') : (v < 0 ? '−' : '+');
-    return `${p}${s} ₽`;
+    return `${p}${s} ₸`;
   };
   const short = v => {
     const a = Math.abs(v);
@@ -295,6 +370,7 @@
     let bal = openingFor(y, m);
     const list = [];
     let tin = 0, tout = 0, minBal = Infinity;
+    const byCat = {}, byBank = {};
     for (let d = 1; d <= days; d++) {
       const ops = opsFor(y, m, d);
       const inc = ops.filter(o => o.type === 'in').reduce((s, o) => s + o.amount, 0);
@@ -302,12 +378,17 @@
       const start = bal;
       bal = Math.round((bal + inc - out) * 100) / 100;
       tin += inc; tout += out;
+      let alc = 0;
+      ops.forEach(o => {
+        if (o.type === 'out') { const c = catOf(o).id; byCat[c] = (byCat[c] || 0) + o.amount; if (c === 'alcohol') alc += o.amount; }
+        else { const b = bankOf(o).id; byBank[b] = (byBank[b] || 0) + o.amount; }
+      });
       minBal = Math.min(minBal, bal);
-      list.push({ d, ops, inc, out, net: inc - out, start, end: bal, gap: bal < 0 && inc - out < 0 && start >= 0 });
+      list.push({ d, ops, inc, out, alc, net: inc - out, start, end: bal, gap: bal < 0 && inc - out < 0 && start >= 0 });
     }
     // если разрыв продолжается и углубляется — подсвечиваем дни, где он растёт
     list.forEach((x, i) => { if (!x.gap && x.end < 0 && x.end < (list[i - 1]?.end ?? 0) && (list[i - 1]?.end ?? 0) >= 0) x.gap = true; });
-    return { y, m, days, list, tin, tout, end: bal, minBal };
+    return { y, m, days, list, tin, tout, end: bal, minBal, byCat, byBank };
   }
 
   // ---------- Render ----------
@@ -329,8 +410,11 @@
     sEnd.className = 'v ' + (current.end < 0 ? 'expense' : '');
     const gaps = current.list.filter(x => x.gap);
     const sGap = document.getElementById('sGap');
-    sGap.textContent = gaps.length ? `${gaps.length} · до ${short(-current.minBal)} ₽` : 'Нет';
+    sGap.textContent = gaps.length ? `${gaps.length} · до ${short(-current.minBal)} ₸` : 'Нет';
     sGap.className = 'v ' + (gaps.length ? 'expense' : 'income');
+    const alc = current.byCat.alcohol || 0;
+    document.getElementById('sAlc').textContent = money(-alc);
+    document.getElementById('sAlcNote').textContent = current.tout ? `${Math.round(alc / current.tout * 100)}% от расходов · ${current.list.filter(x => x.alc).length} дн.` : 'Расходов пока нет';
 
     const html = [];
     DOW.forEach((n, i) => html.push(`<div class="dow"><span class="full">${n}</span><span class="short">${DOW_SHORT[i]}</span></div>`));
@@ -355,10 +439,10 @@
         if (x.out) lines.push(`<div class="line out">${money(-x.out)}</div>`);
       }
       if (x.ops.length) lines.push(`<div class="line net ${x.net >= 0 ? 'pos' : 'neg'}"><span class="fullv">${money(x.net)}</span><span class="shortv">${x.net < 0 ? '−' : '+'}${short(x.net)}</span></div>`);
-      const gapTitle = x.gap ? `<span class="gap-title">Разрыв в ${short(-x.end)} ₽</span>` : '';
+      const gapTitle = x.gap ? `<span class="gap-title">Разрыв в ${short(-x.end)} ₸</span>` : '';
       const label = `${x.d} ${MONTHS_GEN[m]}: итог ${money(x.net)}, остаток ${money(x.end, false)}`;
       html.push(`<div class="${cls.join(' ')}" data-d="${x.d}" tabindex="0" role="button" aria-label="${label}" title="Остаток на конец дня: ${money(x.end, false)}">
-        <div class="head">${gapTitle}<span class="num">${x.d}</span></div>
+        <div class="head">${gapTitle}${x.alc ? `<span class="alc-mark" title="Алкоголь: ${money(-x.alc)}">алкоголь</span>` : ''}<span class="num">${x.d}</span></div>
         <div class="lines">${lines.join('')}</div>
       </div>`);
     });
@@ -367,6 +451,29 @@
     const trail = (7 - total % 7) % 7;
     for (let i = 1; i <= trail; i++) html.push(`<div class="day other"><div class="head"><span class="num">${i}</span></div></div>`);
     grid.innerHTML = html.join('');
+    renderBreakdown();
+  }
+
+  function barRow(item, value, max, total, extra = '') {
+    const pct = total ? Math.round(value / total * 100) : 0;
+    const w = max ? Math.max(value / max * 100, value ? 2 : 0) : 0;
+    return `<div class="bar-row ${extra}" style="--tag:var(--c-${item.id})">
+      <span class="bar-name">${item.name}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${w}%"></div></div>
+      <span class="bar-val">${money(value, false)} <small>· ${pct}%</small></span></div>`;
+  }
+  function renderBreakdown() {
+    const { byCat, byBank, tout, tin } = current;
+    const cats = CATS.filter(c => byCat[c.id] || c.id === 'alcohol').sort((a, b) => (byCat[b.id] || 0) - (byCat[a.id] || 0));
+    const maxC = Math.max(0, ...cats.map(c => byCat[c.id] || 0));
+    document.getElementById('byCat').innerHTML =
+      (tout ? '' : '<div class="empty-note">Расходов в этом месяце пока нет. Нажмите на день, чтобы добавить расход.</div>') +
+      cats.map(c => barRow(c, byCat[c.id] || 0, maxC, tout, c.id === 'alcohol' ? 'alc' : '')).join('');
+    const banks = BANKS.concat(byBank.none ? [NO_BANK] : []);
+    const maxB = Math.max(0, ...banks.map(b => byBank[b.id] || 0));
+    document.getElementById('byBank').innerHTML =
+      (tin ? '' : '<div class="empty-note">Доходов в этом месяце пока нет.</div>') +
+      banks.map(b => barRow(b, byBank[b.id] || 0, maxB, tin)).join('');
   }
 
   // ---------- Modal ----------
@@ -377,7 +484,8 @@
     openDay = d;
     renderModal();
     backdrop.classList.add('open');
-    setTimeout(() => document.querySelector('#addForm input[name="title"]').focus(), 0);
+    renderPickers();
+    setTimeout(() => document.getElementById('fAmount').focus(), 0);
   }
   function renderModal() {
     const x = current.list[openDay - 1];
@@ -388,7 +496,7 @@
     document.getElementById('mSub').textContent = x.gap ? `${plan} · кассовый разрыв ${money(x.end, false)}` : plan;
     const ul = document.getElementById('mOps');
     ul.innerHTML = x.ops.length ? x.ops.map((o, i) => `
-      <li><span class="name">${o.title.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'})[c])}</span>
+      <li>${(t => `<span class="tag" style="--tag:var(--c-${t.id})">${t.name}</span>`)(o.type === 'in' ? bankOf(o) : catOf(o))}<span class="name">${esc(o.title || '')}</span>
         <span class="amt" style="color:var(--${o.type === 'in' ? 'income' : 'expense'})">${money(o.type === 'in' ? o.amount : -o.amount)}</span>
         <button class="del" data-i="${i}" aria-label="Удалить">×</button></li>`).join('')
       : '<li class="empty">Операций нет</li>';
@@ -411,9 +519,31 @@
     const f = new FormData(e.target);
     const amount = Math.round(parseFloat(f.get('amount')) * 100) / 100;
     if (!(amount > 0)) return;
-    editableOps().push({ type: f.get('type'), title: String(f.get('title')).trim() || 'Операция', amount });
+    const type = f.get('type');
+    const op = { type, title: String(f.get('title') || '').trim(), amount };
+    if (type === 'out') op.cat = selCat; else op.bank = selBank;
+    editableOps().push(op);
     save(); render(); renderModal();
-    e.target.title.value = ''; e.target.amount.value = ''; e.target.title.focus();
+    e.target.title.value = ''; e.target.amount.value = ''; e.target.amount.focus();
+  });
+
+  // ---------- Category / bank pickers ----------
+  let selCat = 'food', selBank = 'kaspi';
+  const chip = (c, on, cls = '') => `<button type="button" class="chip ${cls}" role="radio" aria-checked="${on}" data-id="${c.id}" style="--tag:var(--c-${c.id})">${c.name}</button>`;
+  function renderPickers() {
+    const type = document.querySelector('#addForm input[name="type"]:checked').value;
+    const pc = document.getElementById('pickCat'), pb = document.getElementById('pickBank');
+    pc.hidden = type !== 'out'; pb.hidden = type !== 'in';
+    document.getElementById('pickLabel').textContent = type === 'out' ? 'На что потрачено' : 'Куда пришли деньги';
+    pc.innerHTML = CATS.map(c => chip(c, c.id === selCat)).join('');
+    pb.innerHTML = BANKS.map(b => chip(b, b.id === selBank, 'bank')).join('');
+  }
+  document.getElementById('addForm').addEventListener('change', e => { if (e.target.name === 'type') renderPickers(); });
+  document.getElementById('pickCat').addEventListener('click', e => {
+    const b = e.target.closest('.chip'); if (!b) return; selCat = b.dataset.id; renderPickers(); document.getElementById('fAmount').focus();
+  });
+  document.getElementById('pickBank').addEventListener('click', e => {
+    const b = e.target.closest('.chip'); if (!b) return; selBank = b.dataset.id; renderPickers(); document.getElementById('fAmount').focus();
   });
   document.getElementById('resetDay').addEventListener('click', () => {
     delete store.days[dayKey()]; save(); render(); renderModal();
